@@ -1,0 +1,8 @@
+image: gitpod/workspace-full
+
+tasks:
+  - init: |
+      rustup update
+      cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked
+      solana --version || sh -c "$(curl -sSfL https://release.solana.com/v1.18.12/install)"
+      solana config set --url https://api.devnet.solana.com
