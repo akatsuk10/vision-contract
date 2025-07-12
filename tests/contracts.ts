@@ -78,6 +78,8 @@ describe("🚀 Full Protocol & Product Flow Test", () => {
       provider.connection.getBalance(user.publicKey),
     ]);
 
+    console.log("Balances after airdrop:", balances);
+
     expect(balances[0]).to.be.greaterThan(5 * LAMPORTS_PER_SOL);
     expect(balances[1]).to.be.greaterThan(5 * LAMPORTS_PER_SOL);
     expect(balances[2]).to.be.greaterThan(5 * LAMPORTS_PER_SOL);
@@ -152,6 +154,24 @@ describe("🚀 Full Protocol & Product Flow Test", () => {
         true
       );
 
+      console.log("\n📌 --- Launch Product Start ---");
+    console.log("🧾 Launch Arguments:");
+    console.log("  Name:", "Test Product");
+    console.log("  Description:", "Test Launch");
+    console.log("  Symbol:", "TST");
+    console.log("  Initial Deposit (SOL):", INITIAL_DEPOSIT / LAMPORTS_PER_SOL);
+    console.log("  IPO Slots:", IPO_SLOTS);
+    console.log("  Total Token Supply:", TOKEN_SUPPLY);
+    console.log("  Launch Date (Unix):", LAUNCH_DATE);
+    console.log("  Launch Date (ISO):", new Date(LAUNCH_DATE * 1000).toISOString());
+
+    console.log("📦 Derived Addresses:");
+    console.log("  Product PDA:", product.toString());
+    console.log("  Treasury PDA:", treasury.toString());
+    console.log("  Pool Authority PDA:", poolAuthority.toString());
+    console.log("  Token Mint Address:", tokenMint.publicKey.toString());
+    console.log("  Token Pool ATA:", tokenPool.toString());
+
       // Based on IDL, LaunchProductArgs doesn't include salt
       const tx = await program.methods
         .launchProduct({
@@ -187,6 +207,23 @@ describe("🚀 Full Protocol & Product Flow Test", () => {
       expect(productAccount.tokenMint.toString()).to.equal(tokenMint.publicKey.toString());
       expect(productAccount.maker.toString()).to.equal(productOwner.publicKey.toString());
       expect(productAccount.phase.bidding).to.not.be.undefined; // Should be in bidding phase
+
+    console.log("🧾 On-Chain Product Info:");
+    console.log("  Maker:", productAccount.maker.toString());
+    console.log("  Token Mint:", productAccount.tokenMint.toString());
+    console.log("  Token Pool:", productAccount.tokenPool.toString());
+    console.log("  Phase:", Object.keys(productAccount.phase)[0]);
+    console.log("  Launch Date:", new Date(productAccount.launchDate.toNumber() * 1000).toISOString());
+    console.log("  Approved Bids:", productAccount.approvedBids.toString());
+
+    const mintInfo = await getAccount(provider.connection, tokenPool);
+    console.log("🪙 Token Pool Info:");
+    console.log("  Token Pool Owner:", mintInfo.owner.toString());
+    console.log("  Mint:", mintInfo.mint.toString());
+    console.log("  Amount:", mintInfo.amount.toString());
+
+    console.log("✅ 🎯 Launch Product Complete\n");
+
     } catch (error) {
       console.error("Product launch failed:", error);
       throw error;
