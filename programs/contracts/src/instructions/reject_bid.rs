@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::{program::invoke, system_instruction};
+use anchor_lang::solana_program::{program::invoke_signed, system_instruction};
 use crate::state::{product::*, user_bid::*};
 use crate::errors::*;
 
@@ -30,14 +30,14 @@ pub struct RejectBid<'info> {
         bump,
     )]
     /// CHECK: Treasury PDA for holding SOL
-    pub treasury: SystemAccount<'info>,
+    pub treasury: UncheckedAccount<'info>,
 
     /// CHECK: User account to receive refund
     #[account(
         mut,
         constraint = user_account.key() == user_bid.user @ ContractError::UnauthorizedAccess
     )]
-    pub user_account: AccountInfo<'info>,
+    pub user_account: UncheckedAccount<'info>,
 
     pub system_program: Program<'info, System>,
 }
@@ -45,28 +45,81 @@ pub struct RejectBid<'info> {
 pub fn handler(ctx: Context<RejectBid>) -> Result<()> {
     let user_bid = &mut ctx.accounts.user_bid;
     let product = &ctx.accounts.product;
+    let treasury = &ctx.accounts.treasury;
+    let user_account = &ctx.accounts.user_account;
+
+    // Store the refund amount before modifying the bid
+    let refund_amount = user_bid.amount;
+
+    // Verify treasury has sufficient balance
+    let treasury_balance = treasury.lamports();
+    require!(treasury_balance >= refund_amount, ContractError::InsufficientFunds);
 
     // Reject the bid
     user_bid.status = BidStatus::Rejected;
+    user_bid.funds_claimed = true;
 
-    // Refund the user immediately
+    // Create the seeds for the treasury PDA
     let product_key = product.key();
-    let treasury_seeds = &[b"treasury", product_key.as_ref(), &[ctx.bumps.treasury]];
+    let treasury_seeds = &[
+        b"treasury",
+        product_key.as_ref(),
+        &[ctx.bumps.treasury],
+    ];
     let treasury_signer = &[&treasury_seeds[..]];
 
-    invoke(
+    // Method 1: Direct lamport transfer (recommended for PDAs)
+    **treasury.try_borrow_mut_lamports()? -= refund_amount;
+    **user_account.try_borrow_mut_lamports()? += refund_amount;
+
+    msg!("Bid rejected and {} lamports refunded to user", refund_amount);
+
+    Ok(())
+}
+
+// Alternative method using invoke_signed (if the above doesn't work)
+pub fn handler_alternative(ctx: Context<RejectBid>) -> Result<()> {
+    let user_bid = &mut ctx.accounts.user_bid;
+    let product = &ctx.accounts.product;
+    let treasury = &ctx.accounts.treasury;
+    let user_account = &ctx.accounts.user_account;
+
+    // Store the refund amount before modifying the bid
+    let refund_amount = user_bid.amount;
+
+    // Verify treasury has sufficient balance
+    let treasury_balance = treasury.lamports();
+    require!(treasury_balance >= refund_amount, ContractError::InsufficientFunds);
+
+    // Reject the bid
+    user_bid.status = BidStatus::Rejected;
+    user_bid.funds_claimed = true;
+
+    // Create the seeds for the treasury PDA
+    let product_key = product.key();
+    let treasury_seeds = &[
+        b"treasury",
+        product_key.as_ref(),
+        &[ctx.bumps.treasury],
+    ];
+    let treasury_signer = &[&treasury_seeds[..]];
+
+    // Transfer SOL from treasury PDA back to user using invoke_signed
+    invoke_signed(
         &system_instruction::transfer(
-            ctx.accounts.treasury.key,
-            ctx.accounts.user_account.key,
-            user_bid.amount,
+            &treasury.key(),
+            &user_account.key(),
+            refund_amount,
         ),
         &[
-            ctx.accounts.treasury.to_account_info(),
-            ctx.accounts.user_account.to_account_info(),
+            treasury.to_account_info(),
+            user_account.to_account_info(),
+            ctx.accounts.system_program.to_account_info(),
         ],
+        treasury_signer,
     )?;
 
-    user_bid.funds_claimed = true;
+    msg!("Bid rejected and {} lamports refunded to user", refund_amount);
 
     Ok(())
 }

@@ -34,4 +34,6 @@ pub enum ContractError {
     BidClosed,
     #[msg("Invalid number of slots requested, must be between 1 and 5")]
     InvalidSlotCount,
+    #[msg("Insufficient funds in treasury for refund")]
+    InsufficientFunds,
 }

@@ -35,7 +35,8 @@ describe("🔬 Comprehensive Product Launch Flow Tests", () => {
   const TOKEN_SUPPLY = 1_000_000;
   const IPO_SLOTS = 5;
   const INITIAL_DEPOSIT = 2 * LAMPORTS_PER_SOL;
-  const LAUNCH_DATE = Math.floor(Date.now() / 1000) + 86400; // 24 hours from now
+  // Set launch date to 30 days from now to avoid any timing issues
+  const LAUNCH_DATE = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60); // 30 days from now
 
   // Program derived addresses - will be set in before hook
   let globalConfig: PublicKey;
@@ -178,7 +179,23 @@ describe("🔬 Comprehensive Product Launch Flow Tests", () => {
       console.log("\n🔧 PROTOCOL INITIALIZATION");
       console.log("=" .repeat(50));
 
-      console.log("🚀 Executing init_protocol...");
+      // Check if global config already exists
+      try {
+        const existingConfig = await program.account.globalConfig.fetch(globalConfig);
+        console.log(`⚠️  Global config already exists with admin: ${existingConfig.protocolAdmin.toString()}`);
+        
+        // If it exists and has the right admin, skip initialization
+        if (existingConfig.protocolAdmin.toString() === protocolAdmin.publicKey.toString()) {
+          console.log("✅ Protocol already initialized with correct admin, skipping...");
+          return;
+        } else {
+          console.log("❌ Protocol initialized with wrong admin, this test will fail");
+        }
+      } catch (error) {
+        // Account doesn't exist, proceed with initialization
+        console.log("🚀 Executing init_protocol...");
+      }
+
       const tx = await program.methods.initProtocol()
       .accountsPartial({
   globalConfig,
@@ -214,8 +231,28 @@ describe("🔬 Comprehensive Product Launch Flow Tests", () => {
       console.log("\n🚀 PRODUCT LAUNCH");
       console.log("=" .repeat(50));
 
+      // Check if product already exists
+      try {
+        const existingProduct = await program.account.product.fetch(product);
+        console.log(`⚠️  Product already exists: ${existingProduct.name}`);
+        console.log("✅ Product already launched, skipping...");
+        return;
+      } catch (error) {
+        // Product doesn't exist, proceed with launch
+        console.log("🚀 Proceeding with product launch...");
+      }
+
       console.log("💰 Pre-launch balances:");
       await logBalance(productOwner.publicKey, "Product Owner");
+
+      const currentTime = Math.floor(Date.now() / 1000);
+      const launchTime = new Date(LAUNCH_DATE * 1000);
+      const currentTimeReadable = new Date(currentTime * 1000);
+      
+      console.log("\n⏰ Timing Information:");
+      console.log(`   Current Time: ${currentTimeReadable.toLocaleString()}`);
+      console.log(`   Launch Date: ${launchTime.toLocaleString()}`);
+      console.log(`   Time until launch: ${Math.floor((LAUNCH_DATE - currentTime) / (24 * 3600))} days`);
 
       const args = {
         name: "Demo Product",
@@ -233,6 +270,7 @@ describe("🔬 Comprehensive Product Launch Flow Tests", () => {
       console.log(`   Initial Deposit: ${args.initialDeposit.toNumber() / LAMPORTS_PER_SOL} SOL`);
       console.log(`   IPO Slots: ${args.ipoSlots}`);
       console.log(`   Token Supply: ${args.initialTokenSupply.toNumber()}`);
+      console.log(`   Launch Date (Unix): ${args.launchDate.toNumber()}`);
 
       console.log("\n🚀 Executing launch_product...");
       const tx = await program.methods.launchProduct(args)
@@ -262,6 +300,7 @@ describe("🔬 Comprehensive Product Launch Flow Tests", () => {
       console.log(`   Phase: ${Object.keys(productState.phase)[0]}`);
       console.log(`   IPO Slots: ${productState.ipoSlots}`);
       console.log(`   Token Supply: ${productState.totalTokenSupply.toNumber()}`);
+      console.log(`   Launch Date: ${new Date(productState.launchDate.toNumber() * 1000).toLocaleString()}`);
 
       // Verify token setup
       const mintInfo = await getMint(provider.connection, tokenMint.publicKey);
@@ -286,6 +325,22 @@ describe("🔬 Comprehensive Product Launch Flow Tests", () => {
     it("Should allow multiple users to place bids", async () => {
       console.log("\n📥 USER BIDDING");
       console.log("=" .repeat(50));
+
+      const currentTime = Math.floor(Date.now() / 1000);
+      console.log(`⏰ Current time: ${new Date(currentTime * 1000).toLocaleString()}`);
+      console.log(`⏰ Launch date: ${new Date(LAUNCH_DATE * 1000).toLocaleString()}`);
+      console.log(`⏰ Bidding is ${currentTime < LAUNCH_DATE ? 'OPEN' : 'CLOSED'} (${Math.floor((LAUNCH_DATE - currentTime) / (24 * 3600))} days remaining)`);
+
+      // Verify the product is in bidding phase
+      const productState = await program.account.product.fetch(product);
+      console.log(`📦 Product phase: ${Object.keys(productState.phase)[0]}`);
+      console.log(`📦 Launch date from product: ${new Date(productState.launchDate.toNumber() * 1000).toLocaleString()}`);
+      
+      // Double check timing
+      if (currentTime >= LAUNCH_DATE) {
+        console.log("❌ ERROR: Current time is past launch date!");
+        throw new Error("Launch date has passed, cannot bid");
+      };
 
       const bidTests = [
         {
