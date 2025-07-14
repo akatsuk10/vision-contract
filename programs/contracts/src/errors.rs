@@ -30,4 +30,8 @@ pub enum ContractError {
     FundsAlreadyClaimed,
     #[msg("Insufficient tokens in pool")]
     InsufficientTokens,
+    #[msg("Bid closed, cannot accept new bids")]
+    BidClosed,
+    #[msg("Invalid number of slots requested, must be between 1 and 5")]
+    InvalidSlotCount,
 }

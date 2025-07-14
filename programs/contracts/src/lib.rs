@@ -21,23 +21,17 @@ pub mod contracts {
         launch_product::handler(ctx, args)
     }
 
-    pub fn user_bid_product(ctx: Context<UserBidProduct>, amount: u64) -> Result<()> {
-        user_bid_product::handler(ctx, amount)
+    pub fn user_bid_product(ctx: Context<UserBidProduct>, amount: u64, slots_requested: u32) -> Result<()> {
+        user_bid_product::handler(ctx, amount, slots_requested)
     }
 
     pub fn approve_bid(ctx: Context<ApproveBid>) -> Result<()> {
-        approve_bid::handler(ctx)
+        approve_user_bid::handler(ctx)
     }
 
     pub fn reject_bid(ctx: Context<RejectBid>) -> Result<()> {
         reject_bid::handler(ctx)
     }
 
-    pub fn claim_tokens(ctx: Context<ClaimTokens>) -> Result<()> {
-        claim_tokens::handler(ctx)
-    }
-
-    pub fn claim_funds(ctx: Context<ClaimFunds>) -> Result<()> {
-        claim_funds::handler(ctx)
-    }
+   
 }

@@ -1,17 +1,17 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::{program::invoke, system_instruction};
+use anchor_lang::solana_program::{system_instruction, program::invoke};
 use crate::state::{product::*, user_bid::*};
 use crate::errors::*;
 
 #[derive(Accounts)]
-#[instruction(amount: u64)]
+#[instruction(slots_requested: u32)]
 pub struct UserBidProduct<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
 
     #[account(
         mut,
-        seeds = [b"product", product.maker.key().as_ref()],
+        seeds = [b"product", product.maker.as_ref()],
         bump = product.bump
     )]
     pub product: Account<'info, Product>,
@@ -21,33 +21,32 @@ pub struct UserBidProduct<'info> {
         seeds = [b"bid", product.key().as_ref(), user.key().as_ref()],
         bump,
         payer = user,
-        space = 8 + UserBid::INIT_SPACE,
+        space = 8 + UserBid::INIT_SPACE
     )]
     pub user_bid: Account<'info, UserBid>,
 
+    /// CHECK: just holding lamports, verified by seeds
     #[account(
         mut,
         seeds = [b"treasury", product.key().as_ref()],
-        bump,
+        bump
     )]
-    /// CHECK: Treasury PDA for holding SOL
-    pub treasury: SystemAccount<'info>,
+    pub treasury: UncheckedAccount<'info>,
 
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<UserBidProduct>, amount: u64) -> Result<()> {
+pub fn handler(ctx: Context<UserBidProduct>, amount: u64, slots_requested: u32) -> Result<()> {
+    let clock = Clock::get()?;
+    let product = &ctx.accounts.product;
+
+    require!(clock.unix_timestamp < product.bid_close_date, ContractError::BidClosed);
+    require!(slots_requested > 0 && slots_requested <= 5, ContractError::InvalidSlotCount);
     require!(amount > 0, ContractError::ZeroBidAmount);
 
-    let product = &ctx.accounts.product;
-    
-    // Check if bidding is still open
-    require!(product.is_bidding_open(), ContractError::BiddingPeriodEnded);
-
-    // Calculate token amount
     let token_amount = product.calculate_token_amount(amount)?;
 
-    // Initialize user bid
+    // Save user bid state
     let user_bid = &mut ctx.accounts.user_bid;
     user_bid.user = ctx.accounts.user.key();
     user_bid.product = product.key();
@@ -56,10 +55,10 @@ pub fn handler(ctx: Context<UserBidProduct>, amount: u64) -> Result<()> {
     user_bid.status = BidStatus::Pending;
     user_bid.tokens_claimed = false;
     user_bid.funds_claimed = false;
-    user_bid.created_at = Clock::get()?.unix_timestamp;
+    user_bid.slots_requested = slots_requested;
     user_bid.bump = ctx.bumps.user_bid;
 
-    // Transfer SOL to treasury (escrow)
+    // Transfer funds to treasury PDA (escrow)
     invoke(
         &system_instruction::transfer(
             ctx.accounts.user.key,
